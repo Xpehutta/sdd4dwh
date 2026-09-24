@@ -1,3 +1,7 @@
+-- Загрузка DDS s_grnplm_vd_t_bvd_db_dmslcl.d_agr_cred.
+-- Параметр запуска: :'report_dt' — дата отчёта (YYYY-MM-DD), например:
+--   psql -v report_dt=2026-09-23 -f d_agr_cred_load.sql
+
 INSERT INTO s_grnplm_vd_t_bvd_db_dmslcl.d_agr_cred  SELECT agr.agr_cred_id,
     agr.prnt_agr_cred_id,
     agr.info_system_id,
@@ -156,7 +160,8 @@ INSERT INTO s_grnplm_vd_t_bvd_db_dmslcl.d_agr_cred  SELECT agr.agr_cred_id,
                     ELSE 1
                 END) AS subject_area_type_id
            FROM s_grnplm_vd_t_bvd_db_dmslcl.d_agr_cred_cust v_cust
-          WHERE ((('now'::text)::date >= v_cust.start_dt) AND (('now'::text)::date <= v_cust.end_dt))
+          -- привязка на дату отчёта: report_dt задаётся при запуске
+          WHERE ((:'report_dt'::date >= v_cust.start_dt) AND (:'report_dt'::date <= v_cust.end_dt))
           GROUP BY v_cust.agr_cred_id) cst ON ((agr.agr_cred_id = cst.agr_cred_id)))
 UNION ALL
  SELECT agr_cred.agr_cred_id,
