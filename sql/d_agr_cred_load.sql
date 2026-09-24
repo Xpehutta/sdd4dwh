@@ -110,35 +110,31 @@ INSERT INTO s_grnplm_vd_t_bvd_db_dmslcl.d_agr_cred  SELECT agr.agr_cred_id,
            FROM s_grnplm_vd_t_bvd_db_dmslcl.a_agr_cred_coa_period c
           WHERE ((((1 = 1) AND ((c.coa_num ~~ '478%'::text) OR (substr(c.coa_num, 1, 5) = ANY (ARRAY['44111'::text, '44211'::text, '44311'::text, '44411'::text, '44511'::text, '44611'::text, '44711'::text, '44811'::text, '44911'::text, '45011'::text, '45111'::text, '45211'::text, '45311'::text, '45411'::text, '45611'::text])))) AND (substr(c.meas_cd, 1, 6) = 'AGRA_L'::text)) AND (c.meas_rub > (0)::numeric))
           GROUP BY c.agr_cred_id) cess_buy_coa ON ((cess_buy_coa.agr_cred_id = agr.agr_cred_id)))
-     LEFT JOIN ( SELECT coa_crncs_sub.agr_cred_id,
+     -- валюта счёта: берём только однозначное значение (min = max); без оконных трюков
+     LEFT JOIN ( SELECT u.agr_cred_id,
             max(
                 CASE
-                    WHEN (coa_crncs_sub.meas_cd = 'AGRA_L001'::text) THEN coa_crncs_sub.crncy_id
+                    WHEN (u.meas_cd = 'AGRA_L001'::text) THEN u.crncy_id
                     ELSE NULL::bigint
                 END) AS agra_l001_crncy_id,
             max(
                 CASE
-                    WHEN (coa_crncs_sub.meas_cd = 'AGRA_L007'::text) THEN coa_crncs_sub.crncy_id
+                    WHEN (u.meas_cd = 'AGRA_L007'::text) THEN u.crncy_id
                     ELSE NULL::bigint
                 END) AS agra_l007_crncy_id,
             max(
                 CASE
-                    WHEN (coa_crncs_sub.meas_cd = 'AGRA_L009'::text) THEN coa_crncs_sub.crncy_id
+                    WHEN (u.meas_cd = 'AGRA_L009'::text) THEN u.crncy_id
                     ELSE NULL::bigint
                 END) AS agra_l009_crncy_id
-           FROM ( SELECT t.agr_cred_id,
-                    t.meas_cd,
-                    t.crncy_id
-                   FROM ( SELECT a_agr_cred_coa_period.agr_cred_id,
-                            a_agr_cred_coa_period.meas_cd,
-                            a_agr_cred_coa_period.crncy_id,
-                            row_number() OVER (PARTITION BY a_agr_cred_coa_period.agr_cred_id, a_agr_cred_coa_period.meas_cd ORDER BY NULL::text) AS rn,
-                            min(a_agr_cred_coa_period.crncy_id) OVER (PARTITION BY a_agr_cred_coa_period.agr_cred_id, a_agr_cred_coa_period.meas_cd) AS mn,
-                            max(a_agr_cred_coa_period.crncy_id) OVER (PARTITION BY a_agr_cred_coa_period.agr_cred_id, a_agr_cred_coa_period.meas_cd) AS mx
-                           FROM s_grnplm_vd_t_bvd_db_dmslcl.a_agr_cred_coa_period
-                          WHERE (a_agr_cred_coa_period.meas_cd = ANY (ARRAY['AGRA_L001'::text, 'AGRA_L007'::text, 'AGRA_L009'::text]))) t
-                  WHERE ((t.rn = 1) AND (t.mx = t.mn))) coa_crncs_sub
-          GROUP BY coa_crncs_sub.agr_cred_id) coa_crncy ON ((coa_crncy.agr_cred_id = agr.agr_cred_id)))
+           FROM ( SELECT p.agr_cred_id,
+                    p.meas_cd,
+                    min(p.crncy_id) AS crncy_id
+                   FROM s_grnplm_vd_t_bvd_db_dmslcl.a_agr_cred_coa_period p
+                  WHERE (p.meas_cd = ANY (ARRAY['AGRA_L001'::text, 'AGRA_L007'::text, 'AGRA_L009'::text]))
+                  GROUP BY p.agr_cred_id, p.meas_cd
+                 HAVING (min(p.crncy_id) = max(p.crncy_id))) u
+          GROUP BY u.agr_cred_id) coa_crncy ON ((coa_crncy.agr_cred_id = agr.agr_cred_id)))
      LEFT JOIN ( SELECT t.agr_cred_id,
             t.optn_issue_dt
            FROM ( SELECT aco_fst_iss_1.agr_cred_id,
