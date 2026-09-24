@@ -1,0 +1,96 @@
+# Delta: credit-agreements
+
+## ADDED Requirements
+
+### Requirement: Источники и потоки загрузки
+
+Загрузка `d_agr_cred` SHALL формировать целевую таблицу как `UNION ALL` трёх независимых потоков: (1) договоры ЭКС из `d_agr_cred_tmp`; (2) договоры ВДО из `v_agr_cred` (didsd_029) с атрибутами `d_agr_cred_core_uvdo`; (3) договоры core/COA из `d_coa_cred_core` + `v_coa`. Каждая строка целевой таблицы SHALL происходить ровно из одного потока.
+
+#### Scenario: Договор есть только в tmp
+
+- **WHEN** `agr_cred_id = X` присутствует в `d_agr_cred_tmp` и отсутствует в потоках ВДО и core
+- **THEN** строка по X в `d_agr_cred` сформирована потоком 1 (ЭКС)
+
+#### Scenario: Договор из потока core/COA
+
+- **WHEN** `agr_cred_id = Y` есть в `d_coa_cred_core` и `v_coa`
+- **THEN** строка по Y сформирована потоком 3: `agr_num = coa.coa_num`, `host_agr_cred_id = '-1'`, `f26_agr_cred_type_id = 4`
+
+### Requirement: Гранулярность и ключ
+
+Одна строка на `agr_cred_id`. `agr_cred_id` SHALL быть NOT NULL и уникален во всей таблице, независимо от потока-источника.
+
+#### Scenario: Пересечение потоков
+
+- **WHEN** `agr_cred_id = Z` встречается в двух потоках одновременно
+- **THEN** загрузка не проходит DQ-проверку «уникальность `agr_cred_id`» и не признаётся пригодной
+
+### Requirement: Дата выдачи (issue_dt)
+
+В потоке ЭКС `issue_dt` SHALL выбираться по приоритету: (1) `eks_issue_dt`, если заполнена; (2) для договоров типа `agr_cred_type_cd = '1'` — `eks_transhes_issue_dt`, если заполнена; (3) иначе — `optn_issue_dt` первой опции выпуска (минимальная `optn_dt` среди опций с `issue_flag = 'Y'` или `move_flag = 'Y'` и `optn_rub <> 0`); (4) если ни одно условие не выполнено — NULL.
+
+#### Scenario: Приоритет eks_issue_dt
+
+- **WHEN** у договора заполнена `eks_issue_dt`
+- **THEN** `issue_dt = eks_issue_dt`, опции выпуска не рассматриваются
+
+#### Scenario: Траншевая выдача для типа '1'
+
+- **WHEN** `eks_issue_dt` пуста, `agr_cred_type_cd = '1'` и `eks_transhes_issue_dt` заполнена
+- **THEN** `issue_dt = eks_transhes_issue_dt`
+
+#### Scenario: Фолбэк на первую опцию выпуска
+
+- **WHEN** `eks_issue_dt` и `eks_transhes_issue_dt` пусты, но есть опции с `issue_flag = 'Y'` и `optn_rub <> 0`
+- **THEN** `issue_dt` равна `optn_dt` самой ранней такой опции; если таких опций нет — NULL
+
+### Requirement: Валюта договора (crncy_id)
+
+`crncy_id` в потоке ЭКС SHALL выбираться по типу договора из счетов `a_agr_cred_coa_period` (учитывается только однозначная валюта счёта — когда min = max): `f26_agr_cred_type_cd = 'Г'` → `AGRA_L009`; `agr_cred_type_cd ∈ {'0','4'}` → `AGRA_L001`; `'1'` → `AGRA_L007`; при отсутствии подходящего счёта — фолбэк на `issue_crncy_id`. Для остальных типов — `issue_crncy_id`.
+
+#### Scenario: Тип '4' со счётом L001
+
+- **WHEN** `agr_cred_type_cd = '4'` и по договору есть единственная валюта счёта `AGRA_L001`
+- **THEN** `crncy_id` равна валюте счёта `AGRA_L001`
+
+#### Scenario: Нет подходящего счёта
+
+- **WHEN** для договора типа '1' счёт `AGRA_L007` отсутствует
+- **THEN** `crncy_id = issue_crncy_id`
+
+### Requirement: Цессия (cession_dt и флаги)
+
+`cession_dt` SHALL определяться каскадом: (1) дата открытия счёта покупки цессии (счета `478%` или `44x11`, `meas_cd = 'AGRA_L'`, `meas_rub > 0`), если счёт есть; (2) иначе — `eks_cession_dt`; (3) иначе — из счёта проданной цессии (`4742325`): `cess_debt_coa_open_dt`, если она не раньше даты привязки счёта `coa_bind_dt`, иначе `coa_bind_dt`; (4) иначе — `cess_last_reg_dt`. `cession_buy_flag = 'Y'` SHALL быть при наличии счёта покупки, иначе `'N'`. `cess_deferred_flag = 'Y'` SHALL быть, когда есть продажа или регистрация цессии и нет покупки, иначе `'N'`.
+
+#### Scenario: Покупка цессии
+
+- **WHEN** по договору найден счёт покупки цессии
+- **THEN** `cession_dt = cess_buy_coa_open_dt`, `cession_buy_flag = 'Y'`, `cess_deferred_flag = 'N'`
+
+#### Scenario: Продажа без покупки
+
+- **WHEN** счёта покупки нет, но есть счёт продажи или `cess_last_reg_dt`
+- **THEN** `cession_buy_flag = 'N'`, `cess_deferred_flag = 'Y'`
+
+### Requirement: Атрибуты потока ВДО
+
+В потоке ВДО SHALL вычисляться: `agr_frame_id` = `agr_cred_id` для типа `-1034`, иначе — рамочный договор из `v_agr_cred_metric_hist$$$` (метрика `-1007`, числовое значение); `let_of_cred_cover_flag = 'N'`, если frame найден или тип `-1034`, иначе `'Y'`; `rvlng_flag = 'Y'` для типов 12 с `uvdo_ttovarlc_name = 'Прочие товары'`; `subject_area_type_id = 1`.
+
+#### Scenario: Тип -1034
+
+- **WHEN** у договора ВДО `agr_cred_type_id = -1034`
+- **THEN** `agr_frame_id = agr_cred_id` и `let_of_cred_cover_flag = 'N'`
+
+### Requirement: Регламент загрузки и идемпотентность
+
+Загрузка SHALL выполняться как полная перезагрузка раздела: результат не зависит от предыдущего содержимого таблицы. Порядок шагов: подготовка `d_agr_cred_tmp` → `INSERT` → обязательные DQ-проверки. Повторный запуск на том же снапшоте исходных данных SHALL приводить к тому же состоянию таблицы. При сбое DQ результат SHALL NOT признаваться актуальным и публиковаться потребителям.
+
+#### Scenario: Повторный запуск
+
+- **WHEN** загрузка выполнена повторно на том же снапшоте
+- **THEN** количество и состав строк `d_agr_cred` не меняются, DQ-проверки проходят повторно
+
+#### Scenario: Провал DQ
+
+- **WHEN** DQ-проверка «уникальность `agr_cred_id`» не проходит
+- **THEN** загрузка помечается неуспешной и эскалируется по регламенту; результат не признаётся актуальным
