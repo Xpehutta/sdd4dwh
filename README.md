@@ -20,6 +20,9 @@
 | `06-change2-archived` | change заархивирован → спека обновлена |
 | `07-docs` | этот README |
 | `08-ci` | GitHub Actions: валидация спек на push/PR |
+| `09-change3-proposal` | дельта: упрощение подзапроса валют (MODIFIED) |
+| `10-change3-applied` | подзапрос валют переписан: GROUP BY + HAVING, без оконных трюков |
+| `11-change3-archived` | спека обновлена |
 
 Как смотреть:
 
