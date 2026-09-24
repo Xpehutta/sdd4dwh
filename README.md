@@ -1,5 +1,7 @@
 # sdd4dwh — пример реального SDD-воркфлоу для DWH (OpenSpec)
 
+![validate](https://github.com/Xpehutta/sdd4dwh/actions/workflows/validate.yml/badge.svg)
+
 Демонстрация spec-driven development вокруг существующего SQL-файла: от «в репозитории один файл» до цикла изменений с живой спецификацией.
 
 **Старт:** один файл — `sql/d_agr_cred_load.sql`: загрузка DDS-таблицы `s_grnplm_vd_t_bvd_db_dmslcl.d_agr_cred` (349 строк, три потока `UNION ALL`).
@@ -17,6 +19,7 @@
 | `05-change2-applied` | SQL изменён: `('now')::date` → `:'report_dt'::date` + комментарии |
 | `06-change2-archived` | change заархивирован → спека обновлена |
 | `07-docs` | этот README |
+| `08-ci` | GitHub Actions: валидация спек на push/PR |
 
 Как смотреть:
 
@@ -33,6 +36,7 @@ git diff 01-baseline 06-change2-archived          # что SDD добавил в
 - **Ревью по спеке до кода**: proposal → specs → design → tasks → apply.
 - **Валидация ловит ошибки**: `openspec validate --strict` не даёт, например, MODIFIED-блоку молча «потерять» существующий сценарий (одна такая ошибка была поймана и исправлена в этом прогоне).
 - **Сценарии = тесты**: WHEN/THEN из спеки становятся проверками (регламент загрузки, классификация клиента).
+- **CI-гейт**: GitHub Actions валидирует спеки на каждый push/PR (бейдж сверху).
 
 ## Структура
 
@@ -41,6 +45,7 @@ sql/d_agr_cred_load.sql                      # загрузка (psql-парам
 openspec/config.yaml                         # язык ru + контекст проекта
 openspec/specs/credit-agreements/spec.md     # живая спека (после archive)
 openspec/changes/archive/                    # журнал изменений: как спека менялась
+.github/workflows/validate.yml               # CI: openspec validate на push/PR
 ```
 
 ## Запуск загрузки (Greenplum psql)
@@ -50,6 +55,10 @@ psql -v report_dt=2026-09-23 -f sql/d_agr_cred_load.sql
 ```
 
 `report_dt` — обязательный параметр запуска; запуск без него — ошибка (подстановка текущей даты запрещена).
+
+## CI
+
+На каждый push/PR GitHub Actions запускает `openspec validate --all --strict` — тот же гейт, что и локально (бейдж сверху).
 
 ## Продолжить работу
 
