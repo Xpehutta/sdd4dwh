@@ -85,6 +85,16 @@
 - **WHEN** счёта покупки нет, но есть счёт продажи или `cess_last_reg_dt`
 - **THEN** `cession_buy_flag = 'N'`, `cess_deferred_flag = 'Y'`
 
+#### Scenario: Счёт 478% не проходит фильтр покупки
+
+- **WHEN** у договора есть счёт группы `478%` с `meas_cd = 'AGRA_L'` и `meas_rub = 0`, `eks_cession_dt` заполнена, счёта продажи нет и `cess_last_reg_dt` пуста
+- **THEN** счёт не признаётся счётом покупки: `cession_buy_flag = 'N'`, `cess_deferred_flag = 'N'`, `cession_dt = eks_cession_dt`
+
+#### Scenario: Счёт 44x11 с чужой метрикой
+
+- **WHEN** у договора есть счёт `44x11` с `meas_cd <> 'AGRA_L'` и `meas_rub > 0`, `eks_cession_dt` заполнена, счёта продажи нет и `cess_last_reg_dt` пуста
+- **THEN** счёт не признаётся счётом покупки: `cession_buy_flag = 'N'`, `cession_dt = eks_cession_dt`
+
 ### Requirement: Атрибуты потока ВДО
 
 В потоке ВДО SHALL вычисляться: `agr_frame_id` = `agr_cred_id` для типа `-1034`, иначе — рамочный договор из `v_agr_cred_metric_hist$$$` (метрика `-1007`, числовое значение); `let_of_cred_cover_flag = 'N'`, если frame найден или тип `-1034`, иначе `'Y'`; `rvlng_flag = 'Y'` для типов 12 с `uvdo_ttovarlc_name = 'Прочие товары'`; `subject_area_type_id = 1`.

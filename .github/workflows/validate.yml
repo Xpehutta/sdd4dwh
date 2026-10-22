@@ -16,6 +16,9 @@ jobs:
         with:
           node-version: 22
       - name: Install OpenSpec
-        run: npm install -g @fission-ai/openspec@latest
+        # 1.14.x перевёл «требование длиннее 500 символов» из INFO в WARNING,
+        # а --strict считает warning ошибкой — гейт стал невоспроизводимым.
+        # Пинуем версию, на которой репозиторий зелёный.
+        run: npm install -g @fission-ai/openspec@1.13.1
       - name: Validate specs and changes
         run: openspec validate --all --strict
